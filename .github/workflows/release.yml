@@ -16,31 +16,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Extract version from input or release
-        id: extract_version
+        id: extract_version   # <-- Added id so outputs work
         run: |
-          # Use the provided tag if triggered manually, otherwise use the release tag
           if [ "${{ github.event.inputs.tag }}" != "" ]; then
             VERSION="${{ github.event.inputs.tag }}"
           else
             VERSION="${GITHUB_REF#refs/tags/}"
           fi
 
-          # Normalize by removing a leading 'v' if present
           VERSION="${VERSION#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Find jar asset download URL
         id: find_asset
         run: |
-          # Get release data from GitHub API
           release_data=$(curl -sL -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/skidfuscatordev/skidfuscator-java-obfuscator/releases/tags/${{ steps.extract_version.outputs.version }}")
 
-          # Find the asset named 'skidfuscator.jar' (adjust if needed)
-          asset_url=$(echo "$release_data" | jq -r '.assets[] | select(.name == "skidfuscator.jar") | .browser_download_url')
+          echo "Release data from GitHub API:"
+          echo "$release_data"
+
+          asset_url=$(echo "$release_data" | jq -er '.assets?[]? | select(.name == "skidfuscator.jar") | .browser_download_url' || true)
 
           if [ -z "$asset_url" ]; then
-            echo "Could not find skidfuscator.jar in the release."
+            echo "Could not find skidfuscator.jar in the release for version: ${{ steps.extract_version.outputs.version }}"
             exit 1
           fi
 
@@ -62,14 +61,13 @@ jobs:
           repository: skidfuscatordev/homebrew-skidfuscator
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           ref: master
+
       - name: List Files
         run: ls -R
+
       - name: Cleanup and Prepare Formula
         run: |
-          # Ensure Formula directory exists
           mkdir -p Formula
-
-          # Use absolute path and verify directory exists
           FORMULA_DIR="$(pwd)/Formula"
           FORMULA_PATH="${FORMULA_DIR}/skidfuscator.rb"
 
@@ -77,10 +75,8 @@ jobs:
           echo "Formula directory: ${FORMULA_DIR}"
           echo "Formula path: ${FORMULA_PATH}"
 
-          # Remove any existing formula files
           rm -f ${FORMULA_DIR}/skidfuscator*.rb
 
-          # Create the new formula file
           cat > "${FORMULA_PATH}" << 'EOF'
           class Skidfuscator < Formula
             desc "A JVM-based obfuscation suite designed for Java and Android bytecode"
@@ -107,10 +103,8 @@ jobs:
           end
           EOF
 
-          # Verify file was created
           ls -la ${FORMULA_DIR}
 
-          # Show file contents
           echo "Formula contents:"
           cat "${FORMULA_PATH}"
 
@@ -132,5 +126,3 @@ jobs:
           git push origin HEAD:master
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
-
